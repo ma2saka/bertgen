@@ -135,6 +135,7 @@ provider for `--eval-llm` to get an independent cross-check.
 | `anthropic:<model>` | Anthropic API; supports `--web` | `ANTHROPIC_API_KEY` |
 | `openai:<model>` | OpenAI API | `OPENAI_API_KEY` |
 | `deepseek:<model>` | DeepSeek API | `DEEPSEEK_API_KEY` |
+| `ollama:<model>[@<host>]` | a local [Ollama](https://ollama.com) server, e.g. `ollama:gemma4:12b`; the host defaults to `$OLLAMA_HOST`, then `127.0.0.1:11434` | none |
 | `local:<model>@<base_url>` | any OpenAI-compatible server, e.g. `local:qwen3@http://127.0.0.1:8080/v1` for llama-server | none |
 | `claude-code:<model>` | the `claude` CLI (`claude -p --safe-mode`, so your CLAUDE.md, skills, hooks and MCP servers are not loaded); no tools, or only WebSearch/WebFetch for `--web` | CLI login (`ANTHROPIC_API_KEY` is removed from its environment) |
 | `codex[:<model>]` | the `codex` CLI (`codex exec`) | CLI login |
@@ -144,6 +145,14 @@ Structured output uses tool calls (Anthropic), `json_schema` / `json_object` res
 validation error. An OpenAI-compatible server that rejects a response format with an error
 mentioning `response_format`, `json_schema` or `json_object` is retried with the next looser
 format; any other client error fails the call immediately.
+
+Generation and verification can run entirely on local models, for example with two different
+Ollama models so the cross-check stays independent:
+
+```sh
+uv run bgen --name harassment-ja --rule "日本語の職場での発言がハラスメントに該当するか判定する" \
+  --llm ollama:qwen3.6:35b --eval-llm ollama:gemma4:12b --planner-llm ollama:qwen3.6:35b
+```
 
 ## Rule oracles
 

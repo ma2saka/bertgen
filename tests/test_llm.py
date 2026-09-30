@@ -16,6 +16,7 @@ from bertgen.llm._json import extract_json
 from bertgen.llm.anthropic import AnthropicLLM
 from bertgen.llm.cli import ClaudeCodeLLM, CodexLLM, run_subprocess
 from bertgen.llm.openai_compat import JsonMode, OpenAICompatLLM
+from bertgen.llm.registry import LLMSpec, Provider, ollama_base_url, parse_llm_spec
 
 
 class Answer(BaseModel):
@@ -65,17 +66,41 @@ def test_parse_llm_specs(monkeypatch: pytest.MonkeyPatch) -> None:
     assert parse_llm("openai:gpt-x").name == "openai:gpt-x"
     assert parse_llm("deepseek:deepseek-chat").name == "deepseek:deepseek-chat"
     assert parse_llm("local:qwen3:8b@http://localhost:8080/v1").name == "local:qwen3:8b"
+    assert parse_llm("ollama:qwen3.6:35b").name == "ollama:qwen3.6:35b"
     assert parse_llm("claude-code:sonnet").name == "claude-code:sonnet"
     assert parse_llm("codex").name == "codex"
     assert parse_llm("codex:gpt-x").name == "codex:gpt-x"
 
 
 @pytest.mark.parametrize(
-    "spec", ["", "anthropic", "anthropic:", "local:model", "local:@http://x", "bogus:m"]
+    "spec",
+    [
+        "",
+        "anthropic",
+        "anthropic:",
+        "local:model",
+        "local:@http://x",
+        "ollama:",
+        "ollama:m@",
+        "bogus:m",
+    ],
 )
 def test_parse_llm_invalid(spec: str) -> None:
-    with pytest.raises(ValueError, match=r"expected one of|unknown|local needs"):
+    with pytest.raises(ValueError, match=r"expected one of|unknown|local needs|ollama takes"):
         parse_llm(spec)
+
+
+def test_ollama_spec_and_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert parse_llm_spec("ollama:gemma4:12b") == LLMSpec(Provider.OLLAMA, "gemma4:12b")
+    assert parse_llm_spec("ollama:gemma4:12b@gpu-box:11434") == LLMSpec(
+        Provider.OLLAMA, "gemma4:12b", "gpu-box:11434"
+    )
+    monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    assert ollama_base_url(None) == "http://127.0.0.1:11434/v1"
+    assert ollama_base_url("gpu-box:11434") == "http://gpu-box:11434/v1"
+    assert ollama_base_url("https://llm.example/") == "https://llm.example/v1"
+    monkeypatch.setenv("OLLAMA_HOST", "0.0.0.0:9999")
+    assert ollama_base_url(None) == "http://0.0.0.0:9999/v1"
 
 
 def test_openai_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,5 +1,6 @@
 """Construct providers from `provider:model` spec strings."""
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -9,10 +10,11 @@ from bertgen.llm.cli import ClaudeCodeLLM, CodexLLM
 from bertgen.llm.openai_compat import OpenAICompatLLM
 
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+OLLAMA_DEFAULT_HOST = "http://127.0.0.1:11434"
 
 SPEC_HELP = (
     "expected one of: anthropic:<model>, openai:<model>, deepseek:<model>, "
-    "local:<model>@<base_url>, claude-code:<model>, codex[:<model>]"
+    "ollama:<model>[@<host>], local:<model>@<base_url>, claude-code:<model>, codex[:<model>]"
 )
 
 
@@ -21,6 +23,7 @@ class Provider(StrEnum):
     OPENAI = "openai"
     DEEPSEEK = "deepseek"
     LOCAL = "local"
+    OLLAMA = "ollama"
     CLAUDE_CODE = "claude-code"
     CODEX = "codex"
 
@@ -48,7 +51,25 @@ def parse_llm_spec(spec: str) -> LLMSpec:
         if not at or not local_model or not base_url:
             raise ValueError(f"invalid LLM spec {spec!r}: local needs <model>@<base_url>")
         return LLMSpec(provider, local_model, base_url)
+    if provider is Provider.OLLAMA:
+        ollama_model, at, host = model.rpartition("@")
+        if not at:
+            return LLMSpec(provider, model)
+        if not ollama_model or not host:
+            raise ValueError(f"invalid LLM spec {spec!r}: ollama takes <model>[@<host>]")
+        return LLMSpec(provider, ollama_model, host)
     return LLMSpec(provider, model)
+
+
+def ollama_base_url(host: str | None) -> str:
+    """OpenAI-compatible endpoint of an Ollama server.
+
+    `host` falls back to $OLLAMA_HOST, then to the local default; a scheme is added when missing.
+    """
+    host = host or os.environ.get("OLLAMA_HOST") or OLLAMA_DEFAULT_HOST
+    if "://" not in host:
+        host = f"http://{host}"
+    return f"{host.rstrip('/')}/v1"
 
 
 def parse_llm(spec: str) -> LLM:
@@ -65,6 +86,8 @@ def parse_llm(spec: str) -> LLM:
             return OpenAICompatLLM(model, DEEPSEEK_BASE_URL, "DEEPSEEK_API_KEY", "deepseek")
         case Provider.LOCAL, str(model):
             return OpenAICompatLLM(model, parsed.base_url, None, "local")
+        case Provider.OLLAMA, str(model):
+            return OpenAICompatLLM(model, ollama_base_url(parsed.base_url), None, "ollama")
         case Provider.CLAUDE_CODE, str(model):
             return ClaudeCodeLLM(model)
         case _:
