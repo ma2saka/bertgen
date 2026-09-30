@@ -12,7 +12,16 @@ from transformers import (
 )
 
 from bertgen.stages._encoding import OUTSIDE, label_maps, trimmed, unreachable_spans
-from bertgen.types import Example, LabelScore, Metrics, Prediction, Span, TaskKind, TaskSpec
+from bertgen.types import (
+    Example,
+    LabelScore,
+    Metrics,
+    Prediction,
+    Scored,
+    Span,
+    TaskKind,
+    TaskSpec,
+)
 
 BATCH_SIZE = 32
 MAX_INFERENCE_LENGTH = 512
@@ -63,12 +72,16 @@ class Predictor:
 
     def __call__(self, texts: Sequence[str]) -> list[Example]:
         """Examples with labels or spans filled in, in the order of `texts`."""
-        results: list[Example] = []
+        return [scored.example for scored in self.scored(texts)]
+
+    def scored(self, texts: Sequence[str]) -> list[Scored]:
+        """Like calling the predictor, with label or span probabilities attached."""
+        results: list[Scored] = []
         for batch in _batches(texts, BATCH_SIZE):
             results += self._batch(batch)
         return results
 
-    def _batch(self, batch: Sequence[str]) -> list[Example]:
+    def _batch(self, batch: Sequence[str]) -> list[Scored]:
         enc = self.tokenizer(
             list(batch),
             truncation=True,
@@ -85,26 +98,55 @@ class Predictor:
             logits = self.model(**enc.to(self.device)).logits.float().cpu()
 
         id2label = self.id2label
-        results: list[Example] = []
+        results: list[Scored] = []
         for i, text in enumerate(batch):
             match self.spec.kind:
                 case TaskKind.SPAN:
                     keep = [j for j, m in enumerate(mask[i]) if m]
-                    tags = [id2label[k] for k in logits[i].argmax(-1).tolist()]
+                    probs, ids = torch.softmax(logits[i], -1).max(-1)
+                    tags = [id2label[k] for k in ids.tolist()]
+                    token_offsets = [(offsets[i][j][0], offsets[i][j][1]) for j in keep]
                     spans = decode_bio(
                         text,
                         [tags[j] for j in keep],
-                        [(offsets[i][j][0], offsets[i][j][1]) for j in keep],
+                        token_offsets,
                         [special[i][j] for j in keep],
                     )
-                    results.append(Example(text=text, spans=spans))
+                    token_probs = [probs[j].item() for j in keep]
+                    results.append(
+                        Scored(
+                            example=Example(text=text, spans=spans),
+                            span_scores=[_span_score(s, token_offsets, token_probs) for s in spans],
+                        )
+                    )
                 case TaskKind.MULTILABEL:
                     probs = torch.sigmoid(logits[i]).tolist()
                     names = [id2label[k] for k, p in enumerate(probs) if p > MULTILABEL_THRESHOLD]
-                    results.append(Example(text=text, labels=names))
+                    results.append(
+                        Scored(
+                            example=Example(text=text, labels=names),
+                            scores={id2label[k]: p for k, p in enumerate(probs)},
+                        )
+                    )
                 case TaskKind.BINARY | TaskKind.MULTICLASS:
-                    results.append(Example(text=text, labels=[id2label[int(logits[i].argmax())]]))
+                    probs = torch.softmax(logits[i], -1).tolist()
+                    best = max(range(len(probs)), key=probs.__getitem__)
+                    results.append(
+                        Scored(
+                            example=Example(text=text, labels=[id2label[best]]),
+                            scores={id2label[k]: p for k, p in enumerate(probs)},
+                        )
+                    )
         return results
+
+
+def _span_score(span: Span, offsets: Sequence[tuple[int, int]], probs: Sequence[float]) -> float:
+    inside = [
+        p
+        for (start, end), p in zip(offsets, probs, strict=True)
+        if start < span.end and end > span.start
+    ]
+    return sum(inside) / len(inside) if inside else 0.0
 
 
 def predict(spec: TaskSpec, model_dir: Path, texts: Sequence[str]) -> list[Example]:

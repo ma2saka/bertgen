@@ -27,7 +27,7 @@ from bertgen.pipeline import (
     run,
 )
 from bertgen.stages.evaluate import BATCH_SIZE, Predictor
-from bertgen.types import Example, Stage
+from bertgen.types import Scored, Stage
 
 _RUN_FIELDS = (
     "rule",
@@ -238,8 +238,8 @@ def _predict(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     texts: list[str] = args.texts
     batches: Iterable[list[str]] = [texts] if texts else _stdin_batches(sys.stdin)
     for batch in batches:
-        for example in predictor(batch):
-            print(json.dumps(_prediction(example), ensure_ascii=False), flush=True)
+        for scored in predictor.scored(batch):
+            print(json.dumps(_prediction(scored), ensure_ascii=False), flush=True)
 
 
 def _stdin_batches(stream: TextIO) -> Iterator[list[str]]:
@@ -251,7 +251,8 @@ def _stdin_batches(stream: TextIO) -> Iterator[list[str]]:
         yield list(batch)
 
 
-def _prediction(example: Example) -> dict[str, object]:
+def _prediction(scored: Scored) -> dict[str, object]:
+    example = scored.example
     if example.spans:
         spans = [
             {
@@ -259,11 +260,15 @@ def _prediction(example: Example) -> dict[str, object]:
                 "label": s.label,
                 "start": s.start,
                 "end": s.end,
+                "score": round(score, 4),
             }
-            for s in example.spans
+            for s, score in zip(example.spans, scored.span_scores, strict=True)
         ]
         return {"text": example.text, "spans": spans}
-    return {"text": example.text, "labels": example.labels}
+    result: dict[str, object] = {"text": example.text, "labels": example.labels}
+    if scored.scores:
+        result["scores"] = {label: round(p, 4) for label, p in scored.scores.items()}
+    return result
 
 
 def _status(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:

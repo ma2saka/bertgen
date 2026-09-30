@@ -20,7 +20,7 @@ from bertgen.stages._encoding import (
     split_characters,
     unreachable_spans,
 )
-from bertgen.stages.evaluate import decode_bio, evaluate, predict
+from bertgen.stages.evaluate import Predictor, decode_bio, evaluate, predict
 from bertgen.stages.train import train
 from bertgen.types import Example, LabelDef, Span, TaskKind, TaskSpec, TrainConfig
 
@@ -122,6 +122,12 @@ def test_train_sequence_kinds(
 
     predictions = predict(spec, out, [e.text for e in data])
     assert len(predictions) == len(data)
+    for scored in Predictor(spec, out).scored([e.text for e in data[:3]]):
+        assert set(scored.scores) == set(names)
+        assert all(0.0 <= p <= 1.0 for p in scored.scores.values())
+        if kind is not TaskKind.MULTILABEL:
+            assert sum(scored.scores.values()) == pytest.approx(1.0, abs=1e-4)
+            assert scored.example.labels == [max(scored.scores, key=scored.scores.__getitem__)]
     metrics = evaluate(spec, out, data)
     assert metrics.n_test == 20
     assert 0.0 <= metrics.primary <= 1.0
@@ -145,6 +151,10 @@ def test_train_span_and_evaluate(base_model: str, tmp_path: Path) -> None:
     assert model.config.id2label[1] == "B-NUM"
     pipe = pipeline("token-classification", model=str(out))
     assert isinstance(pipe("call 11 now"), list)
+
+    for scored in Predictor(spec, out).scored([e.text for e in data[:5]]):
+        assert len(scored.span_scores) == len(scored.example.spans)
+        assert all(0.0 < p <= 1.0 for p in scored.span_scores)
 
     metrics = evaluate(spec, out, data)
     assert metrics.n_test == 20

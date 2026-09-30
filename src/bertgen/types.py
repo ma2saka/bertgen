@@ -196,6 +196,18 @@ class Prediction(BaseModel):
     predicted: Example
 
 
+class Scored(BaseModel):
+    """A model output with its probabilities.
+
+    `scores` maps every label to its probability for classification kinds. `span_scores` is
+    aligned with `example.spans`: the mean probability of the predicted tags over each span.
+    """
+
+    example: Example
+    scores: dict[str, float] = {}
+    span_scores: list[float] = []
+
+
 class Metrics(BaseModel):
     """Evaluation result on one split.
 

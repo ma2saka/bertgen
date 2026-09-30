@@ -240,6 +240,9 @@ def test_span_run_and_cli(
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert [line["text"] for line in lines] == ["river 42 x", "no digits"]
     assert all("spans" in line or "labels" in line for line in lines)
+    assert all(
+        all("score" in span for span in line.get("spans", [])) or "scores" in line for line in lines
+    )
 
     monkeypatch.setattr("sys.stdin", io.StringIO("river 42 x\n\nno digits\r\n"))
     main(["predict", "--name", "demo", "--runs-dir", str(tmp_path)])
