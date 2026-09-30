@@ -59,7 +59,7 @@ Requires Python 3.13 and [uv](https://docs.astral.sh/uv/). A CUDA GPU is recomme
 training.
 
 ```sh
-git clone https://github.com/ma2saka/genbert.git && cd genbert
+git clone https://github.com/ma2saka/bertgen.git && cd bertgen
 uv sync                        # add --extra ja for the Japanese haiku oracle (fugashi, unidic-lite)
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY / DEEPSEEK_API_KEY, depending on --llm
 ```
