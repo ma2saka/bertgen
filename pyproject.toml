@@ -1,0 +1,57 @@
+[project]
+name = "bertgen"
+version = "0.1.0"
+description = "Generate task-specific ModernBERT classifiers from a natural-language rule using LLM-synthesized data"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "accelerate>=1.15.0",
+    "anthropic>=0.80",
+    "openai>=2.0",
+    "pydantic>=2.11",
+    "scikit-learn>=1.7",
+    "sentencepiece>=0.2",
+    "torch>=2.14.0",
+    "transformers>=5.17.0",
+]
+
+[project.scripts]
+bgen = "bertgen.cli:main"
+
+[project.optional-dependencies]
+ja = [
+    "fugashi>=1.5.2",
+    "unidic-lite>=1.0.8",
+]
+
+[dependency-groups]
+dev = ["pyright>=1.1", "pytest>=8", "ruff>=0.16"]
+
+[build-system]
+requires = ["uv_build>=0.12.17,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "ANN"]
+ignore = ["ANN401"]
+allowed-confusables = ["！", "？", "．", "（", "）"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
